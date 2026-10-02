@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>101 Domino Oyunu - Real-time WhatsApp Multiplayer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- Firebase SDK (Version 11.6.1) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getDatabase, ref, set, get, onValue, update } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+
+        // Firebase Configuration (Public Demo Instance)
+        const firebaseConfig = {
+            databaseURL: "https://domino-101-online-default-rtdb.firebaseio.com"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        window.db = getDatabase(app);
+        window.dbRef = ref;
+        window.dbSet = set;
+        window.dbGet = get;
+        window.dbOnValue = onValue;
+        window.dbUpdate = update;
+        window.firebaseReady = true;
+        if (window.onFirebaseInit) window.onFirebaseInit();
+    </script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        .felt-table {
+            background: radial-gradient(circle at center, #144425 0%, #0a2614 75%, #041209 100%);
+            box-shadow: inset 0 0 120px rgba(0,0,0,0.85);
+        }
+
+        .domino-tile {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 8px -1px rgba(0,0,0,0.4), 0 2px 4px -1px rgba(0,0,0,0.1);
+            border-radius: 6px;
+        }
+
+        .domino-tile.playable {
+            cursor: pointer;
+            box-shadow: 0 0 15px #f59e0b, 0 4px 8px -1px rgba(0,0,0,0.4);
+            border: 2px solid #f59e0b;
+            animation: pulse-border 1.8s infinite;
+        }
+
+        @keyframes pulse-border {
+            0%, 100% { border-color: #f59e0b; box-shadow: 0 0 12px #f59e0b; }
+            50% { border-color: #fbbf24; box-shadow: 0 0 22px #fbbf24; }
+        }
+
+        .domino-tile.playable:hover {
+            transform: translateY(-6px) scale(1.05);
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.25);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-white min-h-screen flex flex-col overflow-x-hidden selection:bg-amber-500 selection:text-black">
+
+    <!-- LOBBY SCREEN -->
+    <div id="screen-lobby" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-gray-950 via-emerald-950 to-gray-950">
+        <div class="max-w-md w-full bg-gray-900/95 border border-emerald-500/30 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-2xl relative overflow-hidden">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-gradient-to-tr from-amber-500 to-amber-300 rounded-2xl mx-auto flex items-center justify-center text-gray-950 font-black text-2xl shadow-lg border border-amber-200/50 mb-3">
+                    101
+                </div>
+                <h1 class="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight">101 Domino Onlayn</h1>
+                <p class="text-xs text-emerald-200/70 mt-1">Canlı WhatsApp Multiplayer (2v2 Komanda Oyunu)</p>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-emerald-300 mb-1">Adınız</label>
+                    <input type="text" id="input-player-name" placeholder="Məsələn: Əli" maxlength="12" class="w-full bg-gray-800/90 border border-emerald-800/60 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-400 transition font-semibold">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button id="btn-create-room" class="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-bold py-3.5 px-3 rounded-xl shadow-lg border border-emerald-400/30 transition active:scale-95 text-xs flex flex-col items-center gap-1">
+                        <span class="text-sm font-black">Otaq Yarat</span>
+                        <span class="text-[10px] font-normal text-emerald-200">Kodu & Linki Al</span>
+                    </button>
+
+                    <button id="btn-show-join" class="bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-gray-950 font-bold py-3.5 px-3 rounded-xl shadow-lg border border-amber-300/30 transition active:scale-95 text-xs flex flex-col items-center gap-1">
+                        <span class="text-sm font-black">Otağa Qoşul</span>
+                        <span class="text-[10px] font-normal text-amber-950/80">Kodu daxil et</span>
+                    </button>
+                </div>
+
+                <button id="btn-local-play" class="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg border border-blue-400/30 transition active:scale-95 text-xs flex justify-center items-center gap-2">
+                    🤖 Botlar ilə Təkbaşına Başla (Oflayn)
+                </button>
+
+                <div id="join-code-box" class="hidden space-y-3 pt-3 border-t border-gray-800">
+                    <label class="block text-xs font-semibold text-amber-300">Otaq Kodu</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="input-room-code" placeholder="Məs: 842109" maxlength="6" class="uppercase tracking-widest text-center font-mono w-full bg-gray-800 border border-amber-500/50 rounded-xl px-3 py-2.5 text-amber-300 font-bold focus:outline-none text-base">
+                        <button id="btn-join-room" class="bg-amber-500 hover:bg-amber-400 text-gray-950 font-bold px-5 rounded-xl transition active:scale-95 text-sm shrink-0">
+                            Qoşul
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 pt-4 border-t border-gray-800/80 text-[11px] text-gray-400 flex items-center justify-between">
+                <span>1 vƏ 3 = 1-ci Komanda</span>
+                <span class="w-1 h-1 bg-gray-600 rounded-full"></span>
+                <span>2 vƏ 4 = 2-ci Komanda</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- SEAT SELECTION & ROOM LOBBY -->
+    <div id="screen-seat-selection" class="fixed inset-0 z-40 flex items-center justify-center p-4 bg-gray-950/95 backdrop-blur-lg hidden">
+        <div class="max-w-xl w-full bg-gray-900 border border-emerald-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-950/80 p-4 rounded-2xl border border-emerald-800/40">
+                <div>
+                    <span class="text-xs text-gray-400 block uppercase font-semibold">Otaq Kodu:</span>
+                    <span id="display-room-code" class="text-2xl font-black text-amber-400 tracking-widest font-mono">000000</span>
+                </div>
+                <button id="btn-copy-link" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl border border-emerald-400/40 text-xs transition flex items-center gap-2 active:scale-95 shadow-lg">
+                    📲 WhatsApp Linkini Kopyala
+                </button>
+            </div>
+
+            <div class="text-center">
+                <h2 class="text-lg font-bold text-emerald-300">Yerinizi Seçin</h2>
+                <p class="text-xs text-gray-400">Çarpaz oturan oyunçular eyni komandada olur (1&3 vs 2&4).</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div id="seat-card-0" class="border border-emerald-600/40 bg-emerald-950/30 rounded-2xl p-4 flex flex-col items-center justify-between gap-2 min-h-[110px]">
+                    <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">1-ci Yer (1. Komanda)</span>
+                    <span id="seat-player-0" class="font-bold text-sm text-gray-300">Boşdur</span>
+                    <button id="btn-take-seat-0" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-1.5 rounded-lg border border-emerald-400/30 transition active:scale-95">Eyləş</button>
+                </div>
+
+                <div id="seat-card-1" class="border border-rose-600/40 bg-rose-950/30 rounded-2xl p-4 flex flex-col items-center justify-between gap-2 min-h-[110px]">
+                    <span class="text-[10px] font-bold text-rose-400 uppercase tracking-wider">2-ci Yer (2. Komanda)</span>
+                    <span id="seat-player-1" class="font-bold text-sm text-gray-300">Boşdur</span>
+                    <button id="btn-take-seat-1" class="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-4 py-1.5 rounded-lg border border-rose-400/30 transition active:scale-95">Eyləş</button>
+                </div>
+
+                <div id="seat-card-2" class="border border-emerald-600/40 bg-emerald-950/30 rounded-2xl p-4 flex flex-col items-center justify-between gap-2 min-h-[110px]">
+                    <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">3-cü Yer (1. Komanda)</span>
+                    <span id="seat-player-2" class="font-bold text-sm text-gray-300">Boşdur</span>
+                    <button id="btn-take-seat-2" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-1.5 rounded-lg border border-emerald-400/30 transition active:scale-95">Eyləş</button>
+                </div>
+
+                <div id="seat-card-3" class="border border-rose-600/40 bg-rose-950/30 rounded-2xl p-4 flex flex-col items-center justify-between gap-2 min-h-[110px]">
+                    <span class="text-[10px] font-bold text-rose-400 uppercase tracking-wider">4-cü Yer (2. Komanda)</span>
+                    <span id="seat-player-3" class="font-bold text-sm text-gray-300">Boşdur</span>
+                    <button id="btn-take-seat-3" class="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs px-4 py-1.5 rounded-lg border border-rose-400/30 transition active:scale-95">Eyləş</button>
+                </div>
+            </div>
+
+            <div class="space-y-3 pt-2">
+                <button id="btn-fill-bots" class="w-full bg-gray-800 hover:bg-gray-700 text-emerald-300 text-xs font-semibold py-2.5 rounded-xl border border-gray-700 transition">
+                    🤖 Boş yerləri AI Botlarla doldur
+                </button>
+
+                <button id="btn-start-match" class="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-gray-950 font-black py-3 rounded-xl shadow-lg border border-amber-300/40 transition active:scale-95">
+                    Oyunu Başlat
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN GAME DISPLAY -->
+    <header class="bg-gray-950/90 border-b border-emerald-900/50 px-4 py-2.5 sticky top-0 z-30 backdrop-blur-md">
+        <div class="max-w-6xl mx-auto flex flex-wrap justify-between items-center gap-2">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center font-black text-gray-950 text-lg shadow">
+                    101
+                </div>
+                <div>
+                    <h1 class="font-black text-base text-amber-400 leading-tight">101 Domino</h1>
+                    <p class="text-[10px] text-emerald-300/80 font-mono" id="round-number-text">1-ci Əl</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4 bg-gray-900 border border-emerald-800/50 px-4 py-1 rounded-2xl">
+                <div class="text-center">
+                    <span class="text-[9px] uppercase tracking-wider text-emerald-400 font-bold block">1. Komanda (P1+P3)</span>
+                    <span class="text-xl font-black text-emerald-300" id="score-team-1">0</span>
+                    <span class="text-[10px] text-gray-400">/101</span>
+                </div>
+
+                <div class="h-7 w-px bg-emerald-800/50"></div>
+
+                <div class="text-center">
+                    <span class="text-[9px] uppercase tracking-wider text-rose-400 font-bold block">2. Komanda (P2+P4)</span>
+                    <span class="text-xl font-black text-rose-300" id="score-team-2">0</span>
+                    <span class="text-[10px] text-gray-400">/101</span>
+                </div>
+            </div>
+
+            <div id="seka-badge" class="hidden flex items-center gap-1.5 bg-amber-500/20 border border-amber-500/60 text-amber-300 px-3 py-1 rounded-full text-xs font-bold animate-pulse">
+                <span>⚡ Seka:</span>
+                <span id="seka-pts">0</span> xal
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 felt-table flex flex-col justify-between p-2 sm:p-4 relative min-h-[500px]">
+
+        <!-- TOP PLAYER (P3) -->
+        <div class="flex flex-col items-center gap-1 z-10">
+            <div id="card-p3" class="bg-gray-900/90 border border-emerald-700/50 px-3 py-1 rounded-xl flex items-center gap-2 shadow">
+                <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 hidden" id="dot-p3"></div>
+                <span id="name-p3" class="text-xs font-bold text-emerald-300">Oyunçu 3</span>
+                <span id="count-p3" class="bg-gray-800 text-[11px] px-1.5 py-0.5 rounded font-mono text-gray-300">7 daş</span>
+            </div>
+            <div id="tiles-p3" class="flex gap-1 h-9 items-center"></div>
+        </div>
+
+        <!-- MIDDLE AREA (P2, Board, P4) -->
+        <div class="flex-1 flex items-center justify-between my-2 relative">
+            <div class="flex flex-col items-center gap-1 z-10">
+                <div id="card-p2" class="bg-gray-900/90 border border-rose-700/50 px-2.5 py-1 rounded-xl flex items-center gap-2 shadow">
+                    <div class="w-2.5 h-2.5 rounded-full bg-rose-500 hidden" id="dot-p2"></div>
+                    <span id="name-p2" class="text-xs font-bold text-rose-300">Oyunçu 2</span>
+                    <span id="count-p2" class="bg-gray-800 text-[11px] px-1.5 py-0.5 rounded font-mono text-gray-300">7</span>
+                </div>
+                <div id="tiles-p2" class="flex flex-col gap-1 w-8 items-center my-1"></div>
+            </div>
+
+            <div class="flex-1 max-w-4xl mx-2 h-60 border border-emerald-500/20 rounded-3xl bg-black/25 backdrop-blur-md p-3 flex flex-col justify-center items-center relative overflow-hidden shadow-inner">
+                <div id="board-chain" class="w-full h-full flex items-center justify-start overflow-x-auto overflow-y-hidden px-6 gap-1 scroll-smooth">
+                    <div id="board-empty-msg" class="w-full text-center text-emerald-300/40 text-xs font-medium italic">
+                        Meydança boşdur. Oyuna ilk gediş (1-1) gözlənilir.
+                    </div>
+                    <div id="board-tiles-flow" class="flex items-center gap-1.5 min-w-max my-auto"></div>
+                </div>
+
+                <div class="absolute left-2 top-1/2 -translate-y-1/2 flex flex-col items-center text-[10px] text-emerald-400/60 font-mono">
+                    <span>SOL</span>
+                    <span id="val-left-end" class="text-amber-400 font-bold text-xs">-</span>
+                </div>
+                <div class="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col items-center text-[10px] text-emerald-400/60 font-mono">
+                    <span>SAĞ</span>
+                    <span id="val-right-end" class="text-amber-400 font-bold text-xs">-</span>
+                </div>
+            </div>
+
+            <div class="flex flex-col items-center gap-1 z-10">
+                <div id="card-p4" class="bg-gray-900/90 border border-rose-700/50 px-2.5 py-1 rounded-xl flex items-center gap-2 shadow">
+                    <div class="w-2.5 h-2.5 rounded-full bg-rose-500 hidden" id="dot-p4"></div>
+                    <span id="name-p4" class="text-xs font-bold text-rose-300">Oyunçu 4</span>
+                    <span id="count-p4" class="bg-gray-800 text-[11px] px-1.5 py-0.5 rounded font-mono text-gray-300">7</span>
+                </div>
+                <div id="tiles-p4" class="flex flex-col gap-1 w-8 items-center my-1"></div>
+            </div>
+        </div>
+
+        <!-- BOTTOM PLAYER (P1 / MY HAND) -->
+        <div class="flex flex-col items-center gap-2 z-10 mt-1">
+            <div id="card-p1" class="bg-gray-900/90 border border-emerald-500/60 px-4 py-1 rounded-xl flex items-center gap-3 shadow-lg">
+                <div class="w-3 h-3 rounded-full bg-emerald-400 animate-ping hidden" id="dot-p1"></div>
+                <span id="name-p1" class="text-xs font-bold text-emerald-200">Siz (Oyunçu 1)</span>
+                <span id="status-p1" class="text-[11px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800">Sizin növbənizdir</span>
+            </div>
+
+            <div id="my-tiles-hand" class="flex flex-wrap justify-center gap-2 max-w-full p-2 bg-black/40 border border-white/10 rounded-2xl backdrop-blur-md min-h-[85px] items-center"></div>
+        </div>
+
+    </main>
+
+    <!-- ANNOUNCEMENT MODAL -->
+    <div id="modal-alert" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-gray-900 border border-amber-500/40 rounded-3xl max-w-md w-full p-6 text-center shadow-2xl relative">
+            <div class="w-14 h-14 bg-amber-500/20 border border-amber-500/50 rounded-2xl mx-auto flex items-center justify-center text-2xl mb-3 text-amber-400">
+                📢
+            </div>
+            <h2 id="modal-title" class="text-xl font-black text-amber-400 mb-2">Məlumat</h2>
+            <p id="modal-desc" class="text-xs text-gray-300 mb-6 leading-relaxed">Mətn burada görünəcək.</p>
+            <button id="modal-btn-confirm" class="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-gray-950 font-bold py-2.5 px-6 rounded-xl shadow-lg transition active:scale-95 text-xs">
+                Tamam
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Core State
+        let isOffline = false;
+        let roomCode = "";
+        let myClientId = "p_" + Math.random().toString(36).substring(2, 9);
+        let mySeatIndex = -1;
+
+        let gameState = {
+            status: "waiting", // waiting, playing, finished
+            seats: [
+                { id: null, name: "Boşdur", isAI: false },
+                { id: null, name: "Boşdur", isAI: false },
+                { id: null, name: "Boşdur", isAI: false },
+                { id: null, name: "Boşdur", isAI: false }
+            ],
+            scores: { team1: 0, team2: 0 },
+            sekaBonus: 0,
+            lastSekaBlocked: false,
+            round: 1,
+            turn: 0,
+            board: [],
+            hands: [[], [], [], []],
+            isFirstRoundOfMatch: true
+        };
+
+        // Firebase Sync Handler
+        function initNetwork(code) {
+            roomCode = code;
+            if (!window.firebaseReady) {
+                window.onFirebaseInit = () => attachFirebaseListener(code);
+            } else {
+                attachFirebaseListener(code);
+            }
+        }
+
+        function attachFirebaseListener(code) {
+            const roomRef = window.dbRef(window.db, "rooms/" + code);
+            window.dbOnValue(roomRef, (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    gameState = data;
+                    onStateUpdated();
+                }
+            });
+        }
+
+        function broadcastState() {
+            if (isOffline) {
+                onStateUpdated();
+                return;
+            }
+            if (roomCode && window.firebaseReady) {
+                const roomRef = window.dbRef(window.db, "rooms/" + roomCode);
+                window.dbSet(roomRef, gameState);
+            }
+        }
+
+        function onStateUpdated() {
+            const foundSeat = gameState.seats.findIndex(s => s && s.id === myClientId);
+            if (foundSeat !== -1) mySeatIndex = foundSeat;
+
+            updateSeatUI();
+
+            if (gameState.status === 'playing') {
+                document.getElementById('screen-lobby').classList.add('hidden');
+                document.getElementById('screen-seat-selection').classList.add('hidden');
+                renderGameView();
+                checkTurnAI();
+            }
+        }
+
+        // --- DOMINO LOGIC ENGINE ---
+        function generate28Dominoes() {
+            const tiles = [];
+            for (let i = 0; i <= 6; i++) {
+                for (let j = i; j <= 6; j++) {
+                    tiles.push({ left: i, right: j });
+                }
+            }
+            return tiles;
+        }
+
+        function shuffle(arr) {
+            let res = [...arr];
+            for (let i = res.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [res[i], res[j]] = [res[j], res[i]];
+            }
+            return res;
+        }
+
+        // STRICT RE-DEAL RULES FOR 101 DOMINO
+        function isHandValid(hand) {
+            // Rule 1: Max 4 doubles allowed
+            const doubles = hand.filter(t => t.left === t.right);
+            if (doubles.length > 4) return false;
+
+            // Rule 2: If 5 tiles of same number exist, MUST have its double tile!
+            for (let num = 0; num <= 6; num++) {
+                let count = 0;
+                let hasDouble = false;
+                hand.forEach(t => {
+                    if (t.left === num) count++;
+                    if (t.right === num) count++;
+                    if (t.left === num && t.right === num) hasDouble = true;
+                });
+                if (count >= 5 && !hasDouble) return false;
+            }
+            return true;
+        }
+
+        function dealValidHands() {
+            let valid = false;
+            let hands = [];
+            let attempts = 0;
+            while (!valid && attempts < 1000) {
+                attempts++;
+                const deck = shuffle(generate28Dominoes());
+                hands = [
+                    deck.slice(0, 7),
+                    deck.slice(7, 14),
+                    deck.slice(14, 21),
+                    deck.slice(21, 28)
+                ];
+                if (hands.every(h => isHandValid(h))) {
+                    valid = true;
+                }
+            }
+            return hands;
+        }
+
+        // ROOM CREATION & LOBBY HANDLERS
+        function generateRoomCode() {
+            return Math.floor(100000 + Math.random() * 900000).toString();
+        }
+
+        document.getElementById('btn-create-room').addEventListener('click', () => {
+            isOffline = false;
+            const playerName = document.getElementById('input-player-name').value.trim() || 'Oyunçu 1';
+            const code = generateRoomCode();
+
+            gameState = {
+                status: "waiting",
+                seats: [
+                    { id: myClientId, name: playerName, isAI: false },
+                    { id: null, name: "Boşdur", isAI: false },
+                    { id: null, name: "Boşdur", isAI: false },
+                    { id: null, name: "Boşdur", isAI: false }
+                ],
+                scores: { team1: 0, team2: 0 },
+                sekaBonus: 0,
+                lastSekaBlocked: false,
+                round: 1,
+                turn: 0,
+                board: [],
+                hands: [[], [], [], []],
+                isFirstRoundOfMatch: true
+            };
+
+            mySeatIndex = 0;
+            initNetwork(code);
+            broadcastState();
+
+            document.getElementById('screen-lobby').classList.add('hidden');
+            document.getElementById('screen-seat-selection').classList.remove('hidden');
+            document.getElementById('display-room-code').innerText = code;
+        });
+
+        document.getElementById('btn-show-join').addEventListener('click', () => {
+            document.getElementById('join-code-box').classList.toggle('hidden');
+        });
+
+        document.getElementById('btn-join-room').addEventListener('click', () => {
+            const code = document.getElementById('input-room-code').value.trim();
+            if (!code) return;
+            isOffline = false;
+            initNetwork(code);
+
+            const playerName = document.getElementById('input-player-name').value.trim() || 'Oyunçu';
+            
+            // Try taking first available seat
+            let emptyIdx = gameState.seats.findIndex(s => !s || !s.id);
+            if (emptyIdx !== -1) {
+                gameState.seats[emptyIdx] = { id: myClientId, name: playerName, isAI: false };
+                mySeatIndex = emptyIdx;
+            }
+
+            broadcastState();
+
+            document.getElementById('screen-lobby').classList.add('hidden');
+            document.getElementById('screen-seat-selection').classList.remove('hidden');
+            document.getElementById('display-room-code').innerText = code;
+        });
+
+        document.getElementById('btn-local-play').addEventListener('click', () => {
+            isOffline = true;
+            roomCode = "OFLAYN";
+            const playerName = document.getElementById('input-player-name').value.trim() || 'Oyunçu';
+
+            gameState.seats = [
+                { id: myClientId, name: playerName, isAI: false },
+                { id: 'bot-1', name: 'Bot 1', isAI: true },
+                { id: 'bot-2', name: 'Bot 2', isAI: true },
+                { id: 'bot-3', name: 'Bot 3', isAI: true }
+            ];
+            mySeatIndex = 0;
+            startMatch();
+        });
+
+        [0, 1, 2, 3].forEach(idx => {
+            document.getElementById(`btn-take-seat-${idx}`).addEventListener('click', () => {
+                const playerName = document.getElementById('input-player-name').value.trim() || 'Oyunçu';
+                
+                gameState.seats.forEach((s, i) => {
+                    if (s && s.id === myClientId) gameState.seats[i] = { id: null, name: 'Boşdur', isAI: false };
+                });
+
+                gameState.seats[idx] = { id: myClientId, name: playerName, isAI: false };
+                mySeatIndex = idx;
+                broadcastState();
+            });
+        });
+
+        document.getElementById('btn-fill-bots').addEventListener('click', () => {
+            gameState.seats = gameState.seats.map((s, idx) => {
+                if (!s || !s.id) return { id: `bot-${idx}`, name: `Bot ${idx+1}`, isAI: true };
+                return s;
+            });
+            broadcastState();
+        });
+
+        document.getElementById('btn-copy-link').addEventListener('click', () => {
+            const inviteURL = window.location.origin + window.location.pathname + '?room=' + roomCode;
+            const dummy = document.createElement('textarea');
+            document.body.appendChild(dummy);
+            dummy.value = inviteURL;
+            dummy.select();
+            document.execCommand('copy');
+            document.body.removeChild(dummy);
+            showAlertModal('✅ Link Kopyalandı!', 'Otaq dəvət linki kopyalandı. İndi WhatsApp-a keçib dostlarınıza göndərə bilərsiniz!');
+        });
+
+        document.getElementById('btn-start-match').addEventListener('click', () => {
+            if (gameState.seats.some(s => !s || !s.id)) {
+                showAlertModal("Xəbərdarlıq", "Bütün 4 yer dolmalıdır! Boş yerləri AI Botlarla doldura bilərsiniz.");
+                return;
+            }
+            startMatch();
+        });
+
+        function updateSeatUI() {
+            gameState.seats.forEach((seat, idx) => {
+                const label = document.getElementById(`seat-player-${idx}`);
+                const btn = document.getElementById(`btn-take-seat-${idx}`);
+
+                if (seat && seat.id) {
+                    label.innerText = seat.name + (seat.id === myClientId ? ' (Siz)' : '');
+                    label.className = "font-bold text-sm text-emerald-300";
+                    btn.classList.add('hidden');
+                } else {
+                    label.innerText = 'Boşdur';
+                    label.className = "font-bold text-sm text-gray-500 italic";
+                    btn.classList.remove('hidden');
+                }
+            });
+        }
+
+        // GAMEPLAY ENGINE
+        function startMatch() {
+            const hands = dealValidHands();
+
+            let starterIdx = 0;
+            for (let i = 0; i < 4; i++) {
+                if (hands[i].some(t => t.left === 1 && t.right === 1)) {
+                    starterIdx = i;
+                    break;
+                }
+            }
+
+            gameState.status = 'playing';
+            gameState.hands = hands;
+            gameState.turn = starterIdx;
+            gameState.board = [];
+            gameState.round = 1;
+            gameState.scores = { team1: 0, team2: 0 };
+            gameState.sekaBonus = 0;
+            gameState.lastSekaBlocked = false;
+            gameState.isFirstRoundOfMatch = true;
+
+            document.getElementById('screen-lobby').classList.add('hidden');
+            document.getElementById('screen-seat-selection').classList.add('hidden');
+
+            broadcastState();
+        }
+
+        function getBoardEnds() {
+            if (!gameState.board || gameState.board.length === 0) return { left: null, right: null };
+            return {
+                left: gameState.board[0].left,
+                right: gameState.board[gameState.board.length - 1].right
+            };
+        }
+
+        function getValidMoves(playerIdx) {
+            const hand = (gameState.hands && gameState.hands[playerIdx]) ? gameState.hands[playerIdx] : [];
+            const ends = getBoardEnds();
+
+            if (!gameState.board || gameState.board.length === 0) {
+                if (gameState.isFirstRoundOfMatch) {
+                    return hand
+                        .map((t, idx) => ({ tile: t, tileIndex: idx, side: 'right' }))
+                        .filter(m => m.tile.left === 1 && m.tile.right === 1);
+                }
+                return hand.map((t, idx) => ({ tile: t, tileIndex: idx, side: 'right' }));
+            }
+
+            const moves = [];
+            hand.forEach((tile, idx) => {
+                if (tile.left === ends.left || tile.right === ends.left) {
+                    moves.push({ tile, tileIndex: idx, side: 'left' });
+                }
+                if (tile.left === ends.right || tile.right === ends.right) {
+                    moves.push({ tile, tileIndex: idx, side: 'right' });
+                }
+            });
+            return moves;
+        }
+
+        function executePlayTile(playerIdx, tileIndex, side) {
+            const hand = [...gameState.hands[playerIdx]];
+            const tile = hand[tileIndex];
+            hand.splice(tileIndex, 1);
+
+            const newBoard = gameState.board ? [...gameState.board] : [];
+            const ends = getBoardEnds();
+
+            if (newBoard.length === 0) {
+                newBoard.push(tile);
+            } else {
+                if (side === 'left') {
+                    if (tile.right === ends.left) newBoard.unshift({ left: tile.left, right: tile.right });
+                    else newBoard.unshift({ left: tile.right, right: tile.left });
+                } else {
+                    if (tile.left === ends.right) newBoard.push({ left: tile.left, right: tile.right });
+                    else newBoard.push({ left: tile.right, right: tile.left });
+                }
+            }
+
+            gameState.board = newBoard;
+            gameState.hands[playerIdx] = hand;
+            gameState.isFirstRoundOfMatch = false;
+
+            if (hand.length === 0) {
+                processRoundWin(playerIdx);
+                return;
+            }
+
+            let nextTurn = (playerIdx + 1) % 4;
+
+            let movesFound = false;
+            for (let i = 0; i < 4; i++) {
+                if (getValidMoves(i).length > 0) {
+                    movesFound = true;
+                    break;
+                }
+            }
+
+            if (!movesFound) {
+                processBlockedGame(nextTurn);
+                return;
+            }
+
+            gameState.turn = nextTurn;
+            broadcastState();
+        }
+
+        function sumHand(hand) {
+            if (!hand) return 0;
+            return hand.reduce((acc, t) => acc + t.left + t.right, 0);
+        }
+
+        function processRoundWin(winnerIdx) {
+            const winnerTeam = (winnerIdx === 0 || winnerIdx === 2) ? 1 : 2;
+            let opponentPoints = 0;
+
+            [0, 1, 2, 3].forEach(p => {
+                const pTeam = (p === 0 || p === 2) ? 1 : 2;
+                if (pTeam !== winnerTeam) {
+                    opponentPoints += sumHand(gameState.hands[p]);
+                }
+            });
+
+            const totalWon = opponentPoints + gameState.sekaBonus;
+            if (winnerTeam === 1) gameState.scores.team1 += totalWon;
+            else gameState.scores.team2 += totalWon;
+
+            if (gameState.scores.team1 >= 101 || gameState.scores.team2 >= 101) {
+                gameState.status = 'finished';
+                showAlertModal("🎉 Oyun Bitdi!", `${winnerTeam}-ci Komanda qələbə qazandı! Final Hesab: ${gameState.scores.team1} - ${gameState.scores.team2}`);
+            } else {
+                gameState.sekaBonus = 0;
+                gameState.lastSekaBlocked = false;
+                gameState.round += 1;
+                gameState.turn = winnerIdx;
+                gameState.board = [];
+                gameState.hands = dealValidHands();
+                showAlertModal("Əl Bitdi!", `${winnerIdx + 1}-ci oyunçu bitdi. ${winnerTeam}-ci komandaya +${totalWon} xal yazıldı.`);
+            }
+
+            broadcastState();
+        }
+
+        function processBlockedGame(nextTurn) {
+            const team1Pts = sumHand(gameState.hands[0]) + sumHand(gameState.hands[2]);
+            const team2Pts = sumHand(gameState.hands[1]) + sumHand(gameState.hands[3]);
+
+            if (team1Pts === team2Pts) {
+                if (gameState.lastSekaBlocked) {
+                    gameState.sekaBonus = 0;
+                    gameState.lastSekaBlocked = false;
+                    showAlertModal("🔒 Oyun Yenidən Bağlandı!", "Əvvəlki Seka xalı ləğv edildi!");
+                } else {
+                    const sekaPts = (team1Pts + team2Pts) * 2;
+                    gameState.sekaBonus += sekaPts;
+                    gameState.lastSekaBlocked = true;
+                    showAlertModal("⚡ SEKA!", `Xallar bərabər oldu! Növbəti qalib üçün +${sekaPts} Seka fonduna əlavə edildi.`);
+                }
+            } else {
+                const winnerTeam = team1Pts < team2Pts ? 1 : 2;
+                const pointsToAward = (winnerTeam === 1 ? team2Pts : team1Pts) + gameState.sekaBonus;
+
+                if (winnerTeam === 1) gameState.scores.team1 += pointsToAward;
+                else gameState.scores.team2 += pointsToAward;
+
+                gameState.sekaBonus = 0;
+                gameState.lastSekaBlocked = false;
+                showAlertModal("🔒 Oyun Bağlandı!", `${winnerTeam}-ci komanda daha az xalla qazandı! +${pointsToAward} xal yazıldı.`);
+            }
+
+            gameState.round += 1;
+            gameState.turn = nextTurn;
+            gameState.board = [];
+            gameState.hands = dealValidHands();
+
+            broadcastState();
+        }
+
+        function checkTurnAI() {
+            if (gameState.status !== 'playing') return;
+
+            const currentSeat = gameState.seats[gameState.turn];
+            if (currentSeat && currentSeat.isAI) {
+                setTimeout(() => {
+                    const validMoves = getValidMoves(gameState.turn);
+                    if (validMoves.length === 0) {
+                        gameState.turn = (gameState.turn + 1) % 4;
+                        broadcastState();
+                    } else {
+                        validMoves.sort((a, b) => (b.tile.left + b.tile.right) - (a.tile.left + a.tile.right));
+                        executePlayTile(gameState.turn, validMoves[0].tileIndex, validMoves[0].side);
+                    }
+                }, 1000);
+            }
+        }
+
+        // RENDER UI
+        function renderGameView() {
+            document.getElementById('score-team-1').innerText = gameState.scores.team1;
+            document.getElementById('score-team-2').innerText = gameState.scores.team2;
+            document.getElementById('round-number-text').innerText = `${gameState.round}-ci Əl`;
+
+            if (gameState.sekaBonus > 0) {
+                document.getElementById('seka-badge').classList.remove('hidden');
+                document.getElementById('seka-pts').innerText = gameState.sekaBonus;
+            } else {
+                document.getElementById('seka-badge').classList.add('hidden');
+            }
+
+            [0, 1, 2, 3].forEach(idx => {
+                const dot = document.getElementById(`dot-p${idx+1}`);
+                if (dot) {
+                    if (gameState.turn === idx) dot.classList.remove('hidden');
+                    else dot.classList.add('hidden');
+                }
+            });
+
+            const renderIdx = mySeatIndex !== -1 ? mySeatIndex : 0;
+            const mapped = getRelativePlayerMapping(renderIdx);
+
+            document.getElementById('name-p1').innerText = mapped.p1.name;
+            document.getElementById('name-p2').innerText = mapped.p2.name;
+            document.getElementById('name-p3').innerText = mapped.p3.name;
+            document.getElementById('name-p4').innerText = mapped.p4.name;
+
+            document.getElementById('count-p2').innerText = `${(gameState.hands[mapped.p2.idx] || []).length}`;
+            document.getElementById('count-p3').innerText = `${(gameState.hands[mapped.p3.idx] || []).length} daş`;
+            document.getElementById('count-p4').innerText = `${(gameState.hands[mapped.p4.idx] || []).length}`;
+
+            renderBoardChain();
+            renderMyHand(mapped.p1.idx);
+
+            renderOpponentBacks(mapped.p2.idx, 'tiles-p2', true);
+            renderOpponentBacks(mapped.p3.idx, 'tiles-p3', false);
+            renderOpponentBacks(mapped.p4.idx, 'tiles-p4', true);
+        }
+
+        function getRelativePlayerMapping(myIdx) {
+            const seats = gameState.seats;
+            return {
+                p1: { idx: myIdx, name: `${seats[myIdx]?.name || 'Oyunçu'} (Siz)` },
+                p2: { idx: (myIdx + 1) % 4, name: seats[(myIdx + 1) % 4]?.name || 'Oyunçu 2' },
+                p3: { idx: (myIdx + 2) % 4, name: seats[(myIdx + 2) % 4]?.name || 'Oyunçu 3' },
+                p4: { idx: (myIdx + 3) % 4, name: seats[(myIdx + 3) % 4]?.name || 'Oyunçu 4' }
+            };
+        }
+
+        function renderBoardChain() {
+            const flow = document.getElementById('board-tiles-flow');
+            const emptyMsg = document.getElementById('board-empty-msg');
+            flow.innerHTML = '';
+
+            if (!gameState.board || gameState.board.length === 0) {
+                emptyMsg.classList.remove('hidden');
+                document.getElementById('val-left-end').innerText = '-';
+                document.getElementById('val-right-end').innerText = '-';
+                return;
+            }
+
+            emptyMsg.classList.add('hidden');
+            const ends = getBoardEnds();
+            document.getElementById('val-left-end').innerText = ends.left;
+            document.getElementById('val-right-end').innerText = ends.right;
+
+            gameState.board.forEach(tile => {
+                const isDouble = tile.left === tile.right;
+                flow.appendChild(createDominoUI(tile.left, tile.right, false, isDouble));
+            });
+        }
+
+        function renderMyHand(myActualIdx) {
+            const handContainer = document.getElementById('my-tiles-hand');
+            handContainer.innerHTML = '';
+
+            const myHand = gameState.hands[myActualIdx] || [];
+            const isMyTurn = gameState.turn === myActualIdx;
+            const validMoves = isMyTurn ? getValidMoves(myActualIdx) : [];
+
+            document.getElementById('status-p1').innerText = isMyTurn ? "Sizin növbənizdir!" : "Gözlənilir...";
+
+            myHand.forEach((tile, index) => {
+                const matches = validMoves.filter(m => m.tileIndex === index);
+                const isPlayable = isMyTurn && matches.length > 0;
+
+                const tileEl = createDominoUI(tile.left, tile.right, true, false, isPlayable);
+
+                if (isPlayable) {
+                    tileEl.classList.add('playable');
+                    tileEl.addEventListener('click', () => {
+                        executePlayTile(myActualIdx, index, matches[0].side);
+                    });
+                }
+                handContainer.appendChild(tileEl);
+            });
+        }
+
+        function renderOpponentBacks(seatIdx, containerId, isVert) {
+            const cont = document.getElementById(containerId);
+            cont.innerHTML = '';
+            const count = (gameState.hands[seatIdx] || []).length;
+            for (let i = 0; i < count; i++) {
+                const dim = isVert ? 'w-5 h-8' : 'w-8 h-5';
+                const div = document.createElement('div');
+                div.className = `${dim} bg-gradient-to-br from-emerald-800 to-emerald-950 border border-emerald-600/40 rounded shadow-sm shrink-0 flex items-center justify-center`;
+                div.innerHTML = `<div class="w-1.5 h-1.5 rounded-full bg-emerald-400/20"></div>`;
+                cont.appendChild(div);
+            }
+        }
+
+        function createDominoUI(valL, valR, isVert = false, isDouble = false, playable = false) {
+            const div = document.createElement('div');
+            let dims = isVert ? 'w-10 h-16 flex-col' : 'w-16 h-10 flex-row';
+            if (isDouble && !isVert) dims = 'w-10 h-16 flex-col';
+
+            div.className = `domino-tile bg-gradient-to-b from-amber-50 to-amber-100 text-gray-900 border border-amber-300 flex items-center justify-between p-1 shrink-0 ${dims}`;
+
+            const sideA = document.createElement('div');
+            sideA.className = 'w-7 h-7 flex items-center justify-center';
+            sideA.appendChild(createSVG(valL));
+
+            const line = document.createElement('div');
+            line.className = (isVert || isDouble) ? 'w-full h-px bg-amber-800/30' : 'h-full w-px bg-amber-800/30';
+
+            const sideB = document.createElement('div');
+            sideB.className = 'w-7 h-7 flex items-center justify-center';
+            sideB.appendChild(createSVG(valR));
+
+            div.appendChild(sideA);
+            div.appendChild(line);
+            div.appendChild(sideB);
+
+            return div;
+        }
+
+        function createSVG(num) {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 30 30');
+            svg.setAttribute('class', 'w-full h-full');
+
+            const p = {
+                tl: { cx: 7, cy: 7 }, tr: { cx: 23, cy: 7 },
+                ml: { cx: 7, cy: 15 }, mc: { cx: 15, cy: 15 }, mr: { cx: 23, cy: 15 },
+                bl: { cx: 7, cy: 23 }, br: { cx: 23, cy: 23 }
+            };
+
+            const map = {
+                0: [],
+                1: [p.mc],
+                2: [p.tl, p.br],
+                3: [p.tl, p.mc, p.br],
+                4: [p.tl, p.tr, p.bl, p.br],
+                5: [p.tl, p.tr, p.mc, p.bl, p.br],
+                6: [p.tl, p.tr, p.ml, p.mr, p.bl, p.br]
+            };
+
+            (map[num] || []).forEach(pos => {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', pos.cx);
+                circle.setAttribute('cy', pos.cy);
+                circle.setAttribute('r', '3');
+                circle.setAttribute('fill', '#111827');
+                svg.appendChild(circle);
+            });
+            return svg;
+        }
+
+        function showAlertModal(title, desc) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-desc').innerText = desc;
+            document.getElementById('modal-alert').classList.remove('hidden');
+        }
+
+        document.getElementById('modal-btn-confirm').addEventListener('click', () => {
+            document.getElementById('modal-alert').classList.add('hidden');
+        });
+
+        // Auto-join code from URL parameter
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const codeFromURL = urlParams.get('room');
+            if (codeFromURL) {
+                document.getElementById('input-room-code').value = codeFromURL;
+                document.getElementById('join-code-box').classList.remove('hidden');
+                
+                // Auto join room from link
+                initNetwork(codeFromURL);
+                document.getElementById('screen-lobby').classList.add('hidden');
+                document.getElementById('screen-seat-selection').classList.remove('hidden');
+                document.getElementById('display-room-code').innerText = codeFromURL;
+            }
+        });
+    </script>
+</body>
+</html>
