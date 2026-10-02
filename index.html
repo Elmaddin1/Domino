@@ -10,11 +10,11 @@
     <!-- Firebase SDK (Version 11.6.1) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getDatabase, ref, set, get, onValue, update } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+        import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
-        // Firebase Configuration (Public Demo Instance)
+        // Firebase Configuration (Public Realtime Database)
         const firebaseConfig = {
-            databaseURL: "https://domino-101-online-default-rtdb.firebaseio.com"
+            databaseURL: "https://domino-101-az-default-rtdb.europe-west1.firebasedatabase.app"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -23,7 +23,6 @@
         window.dbSet = set;
         window.dbGet = get;
         window.dbOnValue = onValue;
-        window.dbUpdate = update;
         window.firebaseReady = true;
         if (window.onFirebaseInit) window.onFirebaseInit();
     </script>
@@ -391,13 +390,10 @@
             return res;
         }
 
-        // STRICT RE-DEAL RULES FOR 101 DOMINO
         function isHandValid(hand) {
-            // Rule 1: Max 4 doubles allowed
             const doubles = hand.filter(t => t.left === t.right);
             if (doubles.length > 4) return false;
 
-            // Rule 2: If 5 tiles of same number exist, MUST have its double tile!
             for (let num = 0; num <= 6; num++) {
                 let count = 0;
                 let hasDouble = false;
@@ -431,7 +427,6 @@
             return hands;
         }
 
-        // ROOM CREATION & LOBBY HANDLERS
         function generateRoomCode() {
             return Math.floor(100000 + Math.random() * 900000).toString();
         }
@@ -480,7 +475,6 @@
 
             const playerName = document.getElementById('input-player-name').value.trim() || 'Oyunçu';
             
-            // Try taking first available seat
             let emptyIdx = gameState.seats.findIndex(s => !s || !s.id);
             if (emptyIdx !== -1) {
                 gameState.seats[emptyIdx] = { id: myClientId, name: playerName, isAI: false };
@@ -567,7 +561,6 @@
             });
         }
 
-        // GAMEPLAY ENGINE
         function startMatch() {
             const hands = dealValidHands();
 
@@ -765,7 +758,6 @@
             }
         }
 
-        // RENDER UI
         function renderGameView() {
             document.getElementById('score-team-1').innerText = gameState.scores.team1;
             document.getElementById('score-team-2').innerText = gameState.scores.team2;
@@ -953,7 +945,6 @@
                 document.getElementById('input-room-code').value = codeFromURL;
                 document.getElementById('join-code-box').classList.remove('hidden');
                 
-                // Auto join room from link
                 initNetwork(codeFromURL);
                 document.getElementById('screen-lobby').classList.add('hidden');
                 document.getElementById('screen-seat-selection').classList.remove('hidden');
